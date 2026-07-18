@@ -26,9 +26,10 @@ while (i < questions.length) {
 
 import "dotenv/config";
 import { GoogleGenAI } from "@google/genai";
+import * as fs from "node:fs";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
+const imageData = fs.readFileSync("/Users/drewhom007/screen shots/chineseguy.jpeg", { encoding: "base64" });
 const rollDiceDeclaration = {
   name: "rollDice",
   description: "Rolls a die with a given number of sides and returns the result.",
@@ -59,7 +60,13 @@ function flipCoin(): string {
   return Math.random() < 0.5 ? "heads" : "tails";
 }
 
-const conversation = [{ role: "user", parts: [{ text: "Roll a 20-sided die for me."}] }];
+const conversation = [{
+  role: "user",
+  parts: [
+    { text: "How many main objects do you see in this image? Then roll a die with that many sides." },
+    { inlineData: { mimeType: "image/jpeg", data: imageData } },
+  ],
+}];
 let done = false;
 
 while (!done) {
