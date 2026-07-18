@@ -28,6 +28,7 @@ import "dotenv/config";
 import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
 const rollDiceDeclaration = {
   name: "rollDice",
   description: "Rolls a die with a given number of sides and returns the result.",
@@ -39,41 +40,63 @@ const rollDiceDeclaration = {
     required: ["sides"],
   },
 };
-const response = await ai.models.generateContent({
-  model: "gemini-3.1-flash-lite",
-  contents: "Roll a 20-sided die for me.",
-  config: {
-    tools: [{ functionDeclarations: [rollDiceDeclaration] }],
-  },
-});
 
 function rollDice(sides: number): number {
-  // do something
   return Math.floor(Math.random() * sides) + 1;
 }
-const diceResult = rollDice(response.functionCalls[0].args.sides);
-const functionResponsePart = {
-  role: "user",
-  parts: [{
-    functionResponse: {
-      name: response.functionCalls[0].name,     // hint: comes from response.functionCalls[0]
-      response: { result: diceResult },  // hint: the value from step 1
-      id: response.functionCalls[0].id,       // hint: also from response.functionCalls[0]
-    },
-  }],
-};
-const conversation = [
-  { role: "user", parts: [{ text: "Roll a 20-sided die for me." }] },
-  response.candidates[0].content,
-  functionResponsePart,
-];
 
-const secondResponse = await ai.models.generateContent({
-  model: "gemini-3.1-flash-lite",
-  contents: conversation,
-  config: {
-    tools: [{ functionDeclarations: [rollDiceDeclaration] }],
+const flipCoinDeclaration = {
+  name: "flipCoin",
+  description: "Flips a coin and returns the result.",
+  parameters: {
+    type: "OBJECT",
+    properties: {},
+    required: [],
   },
-});
+};
 
-console.log(secondResponse.text);
+function flipCoin(): string {
+  return Math.random() < 0.5 ? "heads" : "tails";
+}
+
+const conversation = [{ role: "user", parts: [{ text: "Roll a 20-sided die for me."}] }];
+let done = false;
+
+while (!done) {
+  const response = await ai.models.generateContent({
+    model: "gemini-3.1-flash-lite",
+    contents: conversation,
+    config: {
+      tools: [{ functionDeclarations: [rollDiceDeclaration, flipCoinDeclaration] }],
+    },
+  });
+
+  conversation.push(response.candidates[0].content);
+
+  if (response.functionCalls && response.functionCalls.length > 0) {
+    const calledTool = response.functionCalls[0].name;
+    let result;
+
+    if (calledTool === "rollDice") {
+      result = rollDice(response.functionCalls[0].args.sides);
+    } else if (calledTool === "flipCoin") {
+      result = flipCoin();
+    }
+
+    const functionResponsePart = {
+      role: "user",
+      parts: [{
+        functionResponse: {
+          name: calledTool,
+          response: { result: result },
+          id: response.functionCalls[0].id,
+        },
+      }],
+    };
+
+    conversation.push(functionResponsePart);
+  } else {
+    console.log(response.text);
+    done = true;
+  }
+}
