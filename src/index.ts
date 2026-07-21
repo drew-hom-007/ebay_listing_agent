@@ -166,7 +166,35 @@ const searchCompsDeclaration = {
   },
 };
 
-const conversation = [{ role: "user", parts: [{ text: "Find me some pricing comps for a Nike running shoe." }] }];
+async function checkCategory(query: string): Promise<any> {
+  const token = await getEbayToken();
+
+  const url = new URL("https://api.ebay.com/commerce/taxonomy/v1/category_tree/0/get_category_suggestions");
+  url.searchParams.set("q", query);
+
+  const categoryResponse = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const categoryData = await categoryResponse.json();
+  return categoryData;
+}
+
+const checkCategoryDeclaration = {
+  name: "checkCategory",
+  description: "Check the category for a given search query.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      query: { type: "STRING", description: "Check the category for a given search query." },
+    },
+    required: ["query"],
+  },
+};
+
+const conversation = [{ role: "user", parts: [{ text: "I'm selling a Levi's men's denim trucker jacket, size large, gently used. Find pricing comps and the right eBay category." }] }];
 let done = false;
 
 while (!done) {
@@ -174,7 +202,7 @@ while (!done) {
     model: "gemini-3.1-flash-lite",
     contents: conversation,
     config: {
-      tools: [{ functionDeclarations: [searchCompsDeclaration] }],
+      tools: [{ functionDeclarations: [searchCompsDeclaration, checkCategoryDeclaration] }],
     },
   });
 
@@ -186,6 +214,8 @@ while (!done) {
 
     if (calledTool === "searchComps") {
       result = await searchComps(response.functionCalls[0].args.query);
+      } else if (calledTool === "checkCategory") {
+      result = await checkCategory(response.functionCalls[0].args.query);
     }
 
     const functionResponsePart = {
