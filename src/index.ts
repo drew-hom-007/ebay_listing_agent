@@ -111,35 +111,97 @@ while (!done) {
 import { Buffer } from "buffer";
 import process from "process";
 import "dotenv/config";
+import { GoogleGenAI } from "@google/genai";
 
-const credentials = `${process.env.EBAY_PROD_CLIENT_ID}:${process.env.EBAY_PROD_CLIENT_SECRET}`;
-const encodedCredentials = Buffer.from(credentials).toString("base64");
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const body = new URLSearchParams({
-  grant_type: "client_credentials",
-  scope: "https://api.ebay.com/oauth/api_scope",
-});
+async function getEbayToken(): Promise<string> {
+  const credentials = `${process.env.EBAY_PROD_CLIENT_ID}:${process.env.EBAY_PROD_CLIENT_SECRET}`;
+  const encodedCredentials = Buffer.from(credentials).toString("base64");
 
-const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
-  method: "POST",
-  headers: {
-    Authorization: `Basic ${encodedCredentials}`,
-    "Content-Type": "application/x-www-form-urlencoded",
+  const body = new URLSearchParams({
+    grant_type: "client_credentials",
+    scope: "https://api.ebay.com/oauth/api_scope",
+  });
+
+  const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${encodedCredentials}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: body,
+  });
+
+  const data = await response.json();
+  return data.access_token;
+}
+
+async function searchComps(query: string): Promise<any> {
+  const token = await getEbayToken();
+
+  const url = new URL("https://api.ebay.com/buy/browse/v1/item_summary/search");
+  url.searchParams.set("q", query);
+
+  const searchResponse = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+    },
+  });
+
+  const searchData = await searchResponse.json();
+  return searchData;
+}
+
+const searchCompsDeclaration = {
+  name: "searchComps",
+  description: "Search eBay for comparable listings to research pricing for an item.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      query: { type: "STRING", description: "Search query describing the item, e.g. 'Nike running shoes size 10'" },
+    },
+    required: ["query"],
   },
-  body: body,
-});
+};
 
-const data = await response.json();
+const conversation = [{ role: "user", parts: [{ text: "Find me some pricing comps for a Nike running shoe." }] }];
+let done = false;
 
-const url = new URL("https://api.ebay.com/buy/browse/v1/item_summary/search");
-url.searchParams.set("q", "Patagonia fleece jacket");
+while (!done) {
+  const response = await ai.models.generateContent({
+    model: "gemini-3.1-flash-lite",
+    contents: conversation,
+    config: {
+      tools: [{ functionDeclarations: [searchCompsDeclaration] }],
+    },
+  });
 
-const searchResponse = await fetch(url, {
-  headers: {
-    Authorization: `Bearer ${data.access_token}`,
-    "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
-  },
-});
+  conversation.push(response.candidates[0].content);
 
-const searchData = await searchResponse.json();
-console.log(searchData);
+  if (response.functionCalls && response.functionCalls.length > 0) {
+    const calledTool = response.functionCalls[0].name;
+    let result;
+
+    if (calledTool === "searchComps") {
+      result = await searchComps(response.functionCalls[0].args.query);
+    }
+
+    const functionResponsePart = {
+      role: "user",
+      parts: [{
+        functionResponse: {
+          name: calledTool,
+          response: { result: result },
+          id: response.functionCalls[0].id,
+        },
+      }],
+    };
+
+    conversation.push(functionResponsePart);
+  } else {
+    console.log(response.text);
+    done = true;
+  }
+}
