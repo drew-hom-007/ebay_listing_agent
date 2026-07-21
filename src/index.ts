@@ -22,8 +22,9 @@ while (i < questions.length) {
   conversation.push(modelTurn);
 
   i++;
-} */
+} 
 
+import process from "process";
 import "dotenv/config";
 import { GoogleGenAI } from "@google/genai";
 import * as fs from "node:fs";
@@ -106,4 +107,39 @@ while (!done) {
     console.log(response.text);
     done = true;
   }
-}
+}*/
+import { Buffer } from "buffer";
+import process from "process";
+import "dotenv/config";
+
+const credentials = `${process.env.EBAY_PROD_CLIENT_ID}:${process.env.EBAY_PROD_CLIENT_SECRET}`;
+const encodedCredentials = Buffer.from(credentials).toString("base64");
+
+const body = new URLSearchParams({
+  grant_type: "client_credentials",
+  scope: "https://api.ebay.com/oauth/api_scope",
+});
+
+const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+  method: "POST",
+  headers: {
+    Authorization: `Basic ${encodedCredentials}`,
+    "Content-Type": "application/x-www-form-urlencoded",
+  },
+  body: body,
+});
+
+const data = await response.json();
+
+const url = new URL("https://api.ebay.com/buy/browse/v1/item_summary/search");
+url.searchParams.set("q", "Patagonia fleece jacket");
+
+const searchResponse = await fetch(url, {
+  headers: {
+    Authorization: `Bearer ${data.access_token}`,
+    "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+  },
+});
+
+const searchData = await searchResponse.json();
+console.log(searchData);
