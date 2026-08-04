@@ -107,7 +107,7 @@ while (!done) {
     console.log(response.text);
     done = true;
   }
-}*/
+}
 import { Buffer } from "buffer";
 import process from "process";
 import "dotenv/config";
@@ -234,4 +234,33 @@ while (!done) {
     console.log(response.text);
     done = true;
   }
+}*/
+import "dotenv/config";
+import process from "process";
+import { Buffer } from "buffer";
+
+async function getUserAccessToken(): Promise<string> {
+  const credentials = `${process.env.EBAY_PROD_CLIENT_ID}:${process.env.EBAY_PROD_CLIENT_SECRET}`;
+  const encodedCredentials = Buffer.from(credentials).toString("base64");
+
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: process.env.EBAY_USER_REFRESH_TOKEN!,
+    scope: "https://api.ebay.com/oauth/api_scope/sell.inventory",
+  });
+
+  const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${encodedCredentials}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: body,
+  });
+
+  const data = await response.json();
+  return data.access_token;
 }
+
+const token = await getUserAccessToken();
+console.log("Got token, length:", token?.length);
